@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>J.A.R.V.I.S. Core</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root { --glow: #00d2ff; --red: #ff3333; }
+        body { margin: 0; background: #000; color: var(--glow); font-family: 'Share Tech Mono', monospace; overflow: hidden; }
+        
+        #ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
+        #arc { width: 160px; height: 160px; border: 2px solid var(--glow); border-radius: 50%; cursor: pointer; pointer-events: auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px var(--glow); transition: 0.3s; }
+        #arc:active { transform: scale(0.95); box-shadow: 0 0 40px var(--glow); }
+        
+        #console { width: 85%; margin-top: 40px; padding: 15px; border: 1px solid var(--glow); background: rgba(0, 20, 40, 0.6); font-size: 14px; min-height: 120px; color: #fff; border-radius: 4px; }
+        #vault-btn { position: fixed; top: 10px; right: 10px; padding: 5px 10px; background: transparent; border: 1px solid var(--glow); color: var(--glow); cursor: pointer; pointer-events: auto; font-size: 10px; }
+        .listening { border-color: var(--red) !important; box-shadow: 0 0 30px var(--red) !important; color: var(--red) !important; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="arc" onclick="toggleSystem()">◎</div>
+        <div id="status" style="margin-top:15px;">LINK: STANDBY</div>
+        <div id="console">> Awaiting Secure Authentication...</div>
+    </div>
+
+    <button id="vault-btn" onclick="updateKey()">SECURE VAULT</button>
+
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+
+        // 1. VAULT STORAGE
+        let vaultKey = localStorage.getItem("JARVIS_VAULT_KEY") || "";
+        
+        window.updateKey = () => {
+            const input = prompt("Enter your new Gemini API Key:");
+            if (input) {
+                localStorage.setItem("JARVIS_VAULT_KEY", input);
+                location.reload();
+            }
+        };
+
+        // 2. SPEECH & AI ENGINE
+        const rec = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+        rec.lang = 'hi-IN';
+        rec.continuous = false; // Better for tablet stability
+
+        const synth = window.speechSynthesis;
+        let isSystemOn = false;
+
+        async function connectToNeuralLink(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${vaultKey}`;
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `You are JARVIS. Use short, witty Hinglish. Always call me Sir. Context: ${prompt}` }] }] })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        window.toggleSystem = () => {
+            if (!vaultKey) { alert("Sir, the Vault is empty. Please set the API Key."); return; }
+            if (!isSystemOn) {
+                isSystemOn = true;
+                startListening();
+                speak("All systems green. Neural link established, Sir.");
+            }
+        };
+
+        function speak(text) {
+            synth.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'hi-IN'; u.pitch = 0.85; u.rate = 1.0;
+            u.onend = () => { if(isSystemOn) startListening(); };
+            synth.speak(u);
+            document.getElementById('console').innerText = "> JARVIS: " + text;
+        }
+
+        function startListening() {
+            try { rec.start(); } catch(e) {}
+        }
+
+        rec.onstart = () => {
+            document.getElementById('arc').classList.add('listening');
+            document.getElementById('status').innerText = "LINK: LISTENING";
+        };
+
+        rec.onend = () => {
+            document.getElementById('arc').classList.remove('listening');
+        };
+
+        rec.onresult = async (e) => {
+            const heard = e.results[0][0].transcript;
+            document.getElementById('console').innerText = "> YOU: " + heard;
+            document.getElementById('status').innerText = "LINK: PROCESSING";
+            
+            try {
+                const reply = await connectToNeuralLink(heard);
+                speak(reply);
+            } catch(err) {
+                console.error(err);
+                speak("Sir, I am experiencing interference. Please check the Vault Key.");
+            }
+        };
+
+        // 3. HOLOGRAPHIC CORE
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        const core = new THREE.Points(new THREE.IcosahedronGeometry(10, 2), new THREE.PointsMaterial({ size: 0.1, color: 0x00d2ff }));
+        scene.add(core); camera.position.z = 25;
+        function animate() { requestAnimationFrame(animate); core.rotation.y += 0.005; renderer.render(scene, camera); }
+        animate();
+    </script>
+</body>
+</html>
